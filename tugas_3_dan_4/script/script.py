@@ -30,24 +30,22 @@ def create_vhd(filename: str, size: str):
     except subprocess.CalledProcessError as e:
         print(f"{Colors.RED}[Error]{Colors.RESET} Pembuatan VHD gagal: {e.stderr.decode()}")
 
-def attach(path: str, vhd: str):
-    try:
-        subprocess.run(['sudo', 'modprobe', 'nbd'], check=True)
-        print(f"{Colors.GREEN}[Sukses]{Colors.RESET}  Modul nbd dimuat.")
-    except subprocess.CalledProcessError as e:
-        print(f"{Colors.RED}[Error]{Colors.RESET} Gagal memuat modul nbd: {e.stderr.decode()}")
-        return
-
-    cmd = ['sudo', 'qemu-nbd', '-n', f'--connect={path}', vhd]
+def attach(nbd_path: str, device_path: str):
+    file_name = device_path.split('/')[-1]
+    file_extension = os.path.splitext(file_name)[1]
 
     try:
-        result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        print(result.stdout.decode())
-        checkDisk = subprocess.run(['sudo','fdisk','-l',path], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        print(checkDisk.stdout.decode())
-        print(f"\n{Colors.GREEN}[Sukses]{Colors.RESET} Disk VHD {vhd} terhubung ke {path}.")
+        if file_extension in ['.img', '.raw', '.aff']:
+            print(f"{Colors.BLUE}[Info]{Colors.RESET} Attaching RAW image to {nbd_path}...")
+            cmd = ['sudo', 'qemu-nbd', '--format=raw', f'--connect={nbd_path}', device_path]
+        else:
+            print(f"{Colors.BLUE}[Info]{Colors.RESET} Attaching VHD image to {nbd_path}...")
+            cmd = ['sudo', 'qemu-nbd', '-n', f'--connect={nbd_path}', device_path]
+
+        subprocess.run(cmd, check=True)
+        print(f"{Colors.GREEN}[Success]{Colors.RESET} Successfully attached {file_name} to {nbd_path}.")
     except subprocess.CalledProcessError as e:
-        print(f"{Colors.RED}[Error]{Colors.RESET} Gagal menghubungkan VHD: {e.stderr.decode()}")
+        print(f"{Colors.RED}[Error]{Colors.RESET} Failed to attach disk image: {e}")
 
 def create_partition(path: str):
     print(f"Mempartisi {path} ...")
@@ -147,6 +145,15 @@ def create_files_in_vhd(mount_path : str, num_files : str):
             file_path = os.path.join(mount_path, f"file_{i}.txt")
             with open(file_path, 'w') as f:
                 f.write(f"Ini adalah file nomor {i}\n")
+        
+        file_path = os.path.join(mount_path, f"secr3t_file.txt")
+
+        print(f"{Colors.BLUE}[Info]{Colors.RESET} Membuat secr3t_file.txt file di {mount_path} ...")
+        
+        with open(file_path, 'w') as f:
+                f.write("AFD2024{this_is_test_for_extract_deleted_file}\n")
+                f.close()
+    
         print(f"{Colors.GREEN}[Sukses]{Colors.RESET} File berhasil dibuat.")
     except Exception as e:
         print(f"{Colors.RED}[Error]{Colors.RESET} Gagal membuat file: {e}")
@@ -160,6 +167,17 @@ def delete_files_in_vhd(mount_path : str, num_files : str):
                 os.remove(file_path)
             else:
                 print(f"{Colors.RED}[Warning]{Colors.RESET} File {file_path} tidak ditemukan.")
+
+        file_path = os.path.join(mount_path, f"secr3t_file.txt")
+
+        print(f"{Colors.BLUE}[Info]{Colors.RESET} Menghapus secr3t_file.txt file di {mount_path} ...")
+
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        else:
+            print(f"{Colors.RED}[Warning]{Colors.RESET} File {file_path} tidak ditemukan.")
+
         print(f"{Colors.GREEN}[Sukses]{Colors.RESET} File berhasil dihapus.")
     except Exception as e:
         print(f"{Colors.RED}[Error]{Colors.RESET} Gagal menghapus file: {e}")
@@ -176,9 +194,9 @@ def mount(nbd_path: str, mount_point: str):
     gid = os.getgid()
 
     try:
-        filesystem_type = subprocess.check_output(['blkid', '-s', 'TYPE', nbd_path]).decode().strip()
-        
-        if 'TYPE="ext4"' in filesystem_type:
+        filesystem_type = subprocess.check_output(['sudo', 'blkid', '-s', 'TYPE', '-o', 'value', nbd_path]).decode().strip()
+
+        if 'ext4' in filesystem_type:
             print(f"{Colors.BLUE}[Info]{Colors.RESET} Attempting to mount as ext4...")
             subprocess.run(['sudo', 'mount', '-t', 'ext4', nbd_path, mount_point],check=True)
             subprocess.run(['sudo', 'chown', '-R', f'{uid}:{gid}', mount_point], check=True)
@@ -244,6 +262,55 @@ def AnalyzeFileSystem(device_path, filename):
 
     return results
 
+def acquire_image(device_path: str):
+    file_name = device_path.split('/')[-1]
+
+    image_dir = './image'
+    if not os.path.exists(image_dir):
+        os.makedirs(image_dir)
+        print(f"{Colors.BLUE}[Info]{Colors.RESET} Folder './image' berhasil dibuat.")
+
+    img_image_path = f'{image_dir}/{file_name}.img'
+    
+    try:
+        print(f"{Colors.BLUE}[Info]{Colors.RESET} Starting acquisition to .img...")
+        dd_command = ['sudo', 'dd', f'if={device_path}', f'of={img_image_path}', 'status=progress']
+        subprocess.run(dd_command, check=True)
+        print(f"{Colors.GREEN}[Success]{Colors.RESET} IMG image successfully created at {img_image_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"{Colors.RED}[Error]{Colors.RESET} Failed to acquire image to .img: {e}")
+        return
+
+    raw_image_path = f'{image_dir}/{file_name}.raw'
+    try:
+        print("[Info] Converting .img to .raw format...")
+        convert_command = ['cp', img_image_path, raw_image_path]
+        subprocess.run(convert_command, check=True)
+        print(f"{Colors.GREEN}[Success]{Colors.RESET} RAW image successfully created at {raw_image_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"{Colors.RED}[Error]{Colors.RESET} Failed to convert image to .raw: {e}")
+        return
+
+    try:
+        print("[Info] Converting .raw to .aff format...")
+        affconvert_command = ['affconvert', raw_image_path]
+        subprocess.run(affconvert_command, check=True)
+        print(f"{Colors.GREEN}[Success]{Colors.RESET} AFF image successfully created at {image_dir}/{file_name}.aff")
+    except subprocess.CalledProcessError as e:
+        print(f"{Colors.RED}[Error]{Colors.RESET} Failed to convert image to .aff: {e}")
+
+def acquire_ram(output_path: str):
+    if not output_path.endswith(('.img', '.raw')):
+        output_path += '.raw'  # Pastikan ekstensi yang benar
+
+    try:
+        print("[Info] Starting RAM acquisition...")
+        dd_command = ['sudo', 'dd', 'if=/dev/mem', f'of={output_path}', 'bs=1M', 'status=progress']
+        subprocess.run(dd_command, check=True)
+        print(f"{Colors.GREEN}[Success]{Colors.RESET} RAM image successfully created at {output_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"{Colors.RED}[Error]{Colors.RESET} Failed to acquire RAM image: {e}")
+
 def main():
     if len(sys.argv) > 1:
         operasi = sys.argv[1]
@@ -261,6 +328,7 @@ def main():
                 -t, --test                       : Operasi untuk melakukan hash dan file operations
                 -m, --mount                      : Operasi untuk melakukan mounting nbd ke mountpoint
                 -afs, --analize-file-system      : Operasi untuk melakuakan analisis file system
+                -ai, --acquire-image             : Operasi untuk melakukan akuisisi
 
             Contoh penggunaan:
                 python3 script.py -c <filename> <size>
@@ -270,6 +338,7 @@ def main():
                 python3 script.py -t <mounting_path> <vhd>
                 python3 script.py -m <nbd_path> <mount_point>
                 python3 script.py -afs <device_path> <filename>
+                python3 script.py -aq <device_path>
 
             Size :
                 <angka>G   : Giga Bytes
@@ -393,14 +462,13 @@ def main():
                         print(f"{Colors.RED}[Error]{Colors.RESET} : {e}")
                 else:
                     print(f"{Colors.RED}[Error]{Colors.RESET} vhd tidak terpasang pada sistem.")
-        elif operasi in ['-afs', '--analize-file-system']:
-            if len(sys.argv) != 4:
-                print(f"{Colors.RED}[Error]{Colors.RESET} Harap berikan path ke partisi dan nama file yang diinginkan. Usage: python3 script.py -afs <path> <file-name>")
+        elif operasi in ['-ai', '--acquire-image']:
+            if len(sys.argv) != 3:
+                print(f"[Error] Harap berikan path ke partisi atau disk. Usage: python3 script.py -ai <device_path>")
                 return
             
-            partition_path = sys.argv[2]
-            filename = sys.argv[3]
-            AnalyzeFileSystem(partition_path, filename)
+            device_path = sys.argv[2]
+            acquire_image(device_path)
         else:
             print(f"{Colors.RED}[Error]{Colors.RESET} Operasi tidak dikenali. Coba '-h' untuk bantuan.")
     else:
