@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  php:
+    image: php:7.4-fpm
+    container_name: company_profile-php
+    volumes:
+      - ./public:/var/www/html
+    networks:
+      - company_profile
+    expose:
+      - "9000"
+
+  nginx:
+    image: nginx:latest
+    container_name: company_profile-nginx
+    volumes:
+      - ./default.conf:/etc/nginx/conf.d/default.conf
+      - ./public:/var/www/html
+    ports:
+      - "8080:80"
+    depends_on:
+      - php
+    networks:
+      - company_profile
+
+networks:
+  company_profile:
+    driver: bridge
