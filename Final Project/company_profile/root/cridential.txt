@@ -1,0 +1,8 @@
+uname : alice
+passwd : @alice123#
+
+uname : bob
+passwd : @bob2024#
+
+uname : root
+passwd : 110010101212
