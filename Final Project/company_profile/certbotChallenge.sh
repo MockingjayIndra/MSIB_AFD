@@ -1,6 +1,6 @@
 sudo docker run --rm \
-    -v $(pwd)/letsencrypt:/etc/letsencrypt \
-    -v $(pwd)/public:/var/www/html \
+    -v "$(pwd)/letsencrypt:/etc/letsencrypt" \
+    -v "$(pwd)/public:/var/www/html" \
     certbot/certbot certonly --webroot \
     --webroot-path=/var/www/html \
     --agree-tos \

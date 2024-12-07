@@ -29,8 +29,6 @@ RUN mkdir -p /var/tmp/php-fpm && \
     chown -R www-data:www-data /var/tmp/php-fpm && \
     chmod -R 777 /var/tmp/php-fpm
 
-RUN usermod -aG sudo alice
-
 RUN chmod 777 /var/run
 
 # Install Python3 and pip

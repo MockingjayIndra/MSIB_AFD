@@ -1,0 +1,9 @@
+Attacker 1
+IP :
+Date :
+Time :
+
+Attacker 2
+IP :
+Date :
+Time :
